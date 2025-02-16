@@ -1,5 +1,5 @@
-const BlockBookingInquiry = require("../../models/blockBooking/Inquiry.model");
-const sanitize = require("mongo-sanitize"); // For data sanitization
+const BlockBookingInquiry = require("../../models/blockBooking/inquiry.model");
+const sanitize = require("mongo-sanitize"); 
 const BlockBookingProposal = require("../../models/blockBooking/proposal.model");
 
 

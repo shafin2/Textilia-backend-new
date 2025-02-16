@@ -6,10 +6,9 @@ const userRoutes = require("./users.routes");
 const supplyChainRoutes = require("./supplyChainTerms.routes");
 const generalInquiryRoutes = require("./general/generalInquiry.routes");
 const generalProposalRoutes = require("./general/generalProposal.routes");
-const blockBookingInquiryRoutes = require("./blockBookingInquiry.routes");
-const blockBookingProposalRoutes = require("./blockBookingProposal.routes");
+const blockBookingInquiryRoutes = require("./blockBooking/blockBookingInquiry.routes");
+const blockBookingProposalRoutes = require("./blockBooking/blockBookingProposal.routes");
 const contractRoutes = require("./contracts.routes");
-// Add the block booking inquiry routes
 
 const router = express.Router();
 

@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
-const blockBookingInquiryController = require("../controllers/blockBooking/inquiry.controller");
-const { protect } = require("../middleware/auth.middleware");
+const blockBookingInquiryController = require("../../controllers/blockBooking/inquiry.controller");
+const { protect } = require("../../middleware/auth.middleware");
 
 router.post("/create", protect(["customer"]), blockBookingInquiryController.createInquiry);
 
