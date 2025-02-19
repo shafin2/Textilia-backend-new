@@ -5,15 +5,15 @@ const {
 	getSupplierInquiries,
 	closeInquiry,
 	getGeneralInquiryById,
+	test
 } = require("../../controllers/general/inquiry.controller");
 const { protect } = require("../../middleware/auth.middleware");
 
 const router = express.Router();
-
-router.post("/", protect(["customer"]), createGeneralInquiries);
-router.get("/:inquiryId", getGeneralInquiryById);
-router.get("/customer/:customerId", getCustomerInquiries);
-router.get("/supplier/:supplierId", getSupplierInquiries);
+router.get("/customer", protect(["customer"]), getCustomerInquiries);
+router.get("/supplier", protect(["supplier"]), getSupplierInquiries);
+router.post("/create", protect(["customer"]), createGeneralInquiries);
+router.get("/:inquiryId", protect(["customer", "supplier"]), getGeneralInquiryById);
 router.post("/close/:inquiryId", protect(["customer"]), closeInquiry);
 
 module.exports = router;

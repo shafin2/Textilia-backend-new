@@ -1,38 +1,15 @@
 const GeneralInquiry = require("../../models/general/inquiry.model");
-const sanitize = require("mongo-sanitize"); // For data sanitization
+const User = require("../../models/user.model");
 
-exports.getGeneralInquiryById = async (req, res) => {
-	try {
-		const inquiryId = sanitize(req.params.inquiryId); // Sanitize the inquiryId
-		const inquiry = await GeneralInquiry.findById(inquiryId)
-			.populate(
-				"customerId",
-				"name profile.companyDetails.companyName profile.companyDetails.ntn profile.companyDetails.gst profile.companyDetails.address"
-			) // Populate the customer details
-			.lean(); // Use .lean() for better performance
+const sanitize = require("mongo-sanitize");
 
-		console.log("Inquiry: ", inquiry);
-
-		if (!inquiry) {
-			return res.status(404).json({ message: "Inquiry not found" });
-		}
-
-		res.status(200).json(inquiry);
-	} catch (error) {
-		res
-			.status(500)
-			.json({ message: "Error fetching inquiry", error: error.message });
-	}
-};
-
-// 1. Create General Inquiry
 exports.createGeneralInquiries = async (req, res) => {
 	try {
 		const userId = req.user.id;
-
 		const inquiriesData = req.body.inquiries;
-		if (!Array.isArray(inquiriesData) || inquiriesData.length === 0) {
-			return res.status(400).json({ message: "No inquiries provided" });
+
+		if (!inquiriesData || (Array.isArray(inquiriesData) && inquiriesData.length === 0)) {
+			return res.status(400).json({ message: "Inquiries data is missing or empty" });
 		}
 
 		const inquiries = await Promise.all(
@@ -43,7 +20,7 @@ exports.createGeneralInquiries = async (req, res) => {
 					rate,
 					deliveryStartDate,
 					deliveryEndDate,
-					ppc,
+					po,
 					certification,
 					paymentMode,
 					paymentDays,
@@ -55,30 +32,20 @@ exports.createGeneralInquiries = async (req, res) => {
 					status,
 				} = inquiryData;
 
-				// Validate required fields
-				if (
-					!quantity ||
-					!quantityType ||
-					!rate ||
-					!deliveryStartDate ||
-					!deliveryEndDate
-				) {
+				if (!quantity || !quantityType || !rate || !deliveryStartDate || !deliveryEndDate) {
 					throw new Error("Missing required fields in one or more inquiries");
 				}
 
 				const newInquiry = new GeneralInquiry({
-					customerId: userId, // Automatically set the customer ID from authenticated user
+					customerId: userId,
 					quantity,
 					quantityType,
 					rate,
 					deliveryStartDate,
 					deliveryEndDate,
-					ppc, // Optional fields
+					po,
 					certification,
-					paymentMode,
-					paymentDays,
-					shipmentTerms,
-					businessCondition,
+					paymentTerms: { paymentMode, paymentDays, shipmentTerms, businessCondition },
 					nomination,
 					specifications,
 					conewt,
@@ -95,68 +62,23 @@ exports.createGeneralInquiries = async (req, res) => {
 		});
 	} catch (error) {
 		res.status(500).json({
-			message: "Error creating General Inquiries",
-			error: error.message,
+			message: error.message || "Error creating General Inquiries",
 		});
 	}
 };
-
-// 2. Get Inquiries for a Specific Customer
-exports.getCustomerInquiries = async (req, res) => {
-	try {
-		const customerId = sanitize(req.params.customerId); // Sanitize the customerId
-		// Fetch only the required fields
-		const inquiries = await GeneralInquiry.find({ customerId })
-			.select("ppc specifications quantity quantityType createdAt status")
-			.sort({ createdAt: -1 }) // Sort in descending order
-			.lean(); // Use .lean() for better performance
-		res.status(200).json(inquiries);
-	} catch (error) {
-		res
-			.status(500)
-			.json({
-				message: "Error fetching customer inquiries",
-				error: error.message,
-			});
-	}
-};
-
-// 3. Get Inquiries for a Nominated Supplier
-exports.getSupplierInquiries = async (req, res) => {
-	try {
-		const supplierId = sanitize(req.params.supplierId); // Sanitize the supplierId
-
-		// Fetch inquiries and populate the customer (user) name
-		const inquiries = await GeneralInquiry.find({ nomination: supplierId })
-			.sort({ createdAt: -1 })
-			.populate("customerId", "name email") // Populate user name field
-			.lean(); // Use .lean() for better performance
-
-		console.log("Inquiries: ", inquiries);
-		res.status(200).json(inquiries);
-	} catch (error) {
-		res.status(500).json({
-			message: "Error fetching supplier inquiries",
-			error: error.message,
-		});
-	}
-};
-
 
 exports.closeInquiry = async (req, res) => {
-	console.log("Closing inquiry");
 	try {
 		const inquiryId = sanitize(req.params.inquiryId);
 		console.log("Inquiry ID: ", inquiryId);
-		// Find the inquiry by ID and update the status
 		const updatedInquiry = await GeneralInquiry.findByIdAndUpdate(
 			inquiryId,
-			{ status: "inquiry_closed" }, // Set the status to inquiry_close
-			{ new: true } // Return the updated document
+			{ status: "inquiry_closed" },
+			{ new: true }
 		);
 
 		if (!updatedInquiry) {
-			return res.status(404).json({ message: "Inquiry not found" }); // Handle case where inquiry ID is invalid
+			return res.status(404).json({ message: "Inquiry not found" });
 		}
 
 		res.status(201).json({
@@ -168,6 +90,81 @@ exports.closeInquiry = async (req, res) => {
 		res.status(500).json({
 			message: "Error updating inquiry status",
 			error: error.message,
+		});
+	}
+};
+
+exports.getGeneralInquiryById = async (req, res) => {
+	try {
+		const inquiryId = sanitize(req.params.inquiryId);
+		const userId = req.user.id;
+
+		const inquiry = await GeneralInquiry.findById(inquiryId)
+			.populate("customerId", "name");
+
+		if (!inquiry) {
+			return res.status(404).json({ message: "Inquiry not found" });
+		}
+
+		const response = {
+			inquiryDetails: inquiry,
+			customerName: inquiry.customerId ? inquiry.customerId.name : "N/A",
+		};
+
+		const user = await User.findById(userId);
+
+		if (user.businessType === "customer" && inquiry.nomination) {
+			await inquiry.populate("nomination", "name");
+			response.suppliers = inquiry.nomination.map(supplier => supplier.name);
+		}
+
+		res.status(200).json(response);
+	} catch (error) {
+		res.status(500).json({
+			message: error.message || "Error retrieving General Inquiry",
+		});
+	}
+};
+
+exports.test = async (req, res) => {
+	res.status(200).json({ message: "Test route" });
+}
+
+exports.getCustomerInquiries = async (req, res) => {
+	try {
+		const userId = req.user.id;
+
+		const inquiries = await GeneralInquiry.find({
+			customerId: userId,
+			status: { $ne: "inquiry_closed" }
+		})
+			.sort({ createdAt: -1 })
+			.select("po specifications quantity quantityType createdAt status");
+
+		res.status(200).json(inquiries);
+	} catch (error) {
+		res.status(500).json({
+			message: error.message || "Error retrieving customer inquiries",
+		});
+	}
+};
+
+exports.getSupplierInquiries = async (req, res) => {
+	try {
+		const userId = req.user.id;
+
+		const inquiries = await GeneralInquiry.find({
+			nomination: userId,
+			status: { $ne: "inquiry_closed" }
+		})
+			.sort({ createdAt: -1 })
+			.populate("customerId", "name")
+			.select("po specifications quantity quantityType createdAt status deliveryStartDate deliveryEndDate paymentTerms");
+
+		res.status(200).json(inquiries);
+	} catch (error) {
+		res.status(500).json({
+			message: error.message || "Error retrieving supplier inquiries",
 		});
 	}
 };
