@@ -5,14 +5,12 @@ const blockBookingProposalSchema = new mongoose.Schema({
 		type: mongoose.Schema.Types.ObjectId,
 		ref: "BlockBookingInquiry",
 		required: true,
-	}, // Reference to the inquiry
+	}, 
 	supplierId: {
 		type: mongoose.Schema.Types.ObjectId,
 		ref: "User",
 		required: true,
-	}, // Supplier making the proposal
-
-	// Supplier's proposed values
+	}, 
 	countPrices: [
 		{
 			count: { type: Number, required: true },
@@ -35,16 +33,17 @@ const blockBookingProposalSchema = new mongoose.Schema({
 		offeredPaymentMode: {
 			type: String,
 			enum: ["advance", "credit", "pdc", "advance_pdc", "lc"],
+			required: true,
 		},
-		offeredDays: { type: Number },
-		offeredShipmentTerms: { type: String },
+		offeredDays: { type: Number, required: true },
+		offeredShipmentTerms: { type: String, required: true },
 		offeredBusinessConditions: {
 			type: String,
 			enum: ["efs", "gst", "non_gst"],
+			required: true,
 		},
 	},
 
-	// Proposal status
 	status: {
 		type: String,
 		enum: [
@@ -66,7 +65,6 @@ const blockBookingProposalSchema = new mongoose.Schema({
 	updatedAt: { type: Date },
 });
 
-// Automatically update `updatedAt` field
 blockBookingProposalSchema.pre("save", function (next) {
 	if (this.isModified()) {
 		this.updatedAt = new Date();

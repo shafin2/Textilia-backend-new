@@ -1,7 +1,18 @@
 const mongoose = require("mongoose");
 
 const blockBookingInquirySchema = new mongoose.Schema({
-  customerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  customerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    index: true,
+    validate: {
+      validator: async (value) => {
+        const user = await mongoose.model("User").findById(value);
+        return user && user.businessType === "customer";
+      },
+      message: (props) => `${props.value} is not a valid customer.`,
+    },
+  },
   baseSpecs: {
     carded: { type: Boolean, default: false },
     combed: { type: Boolean, default: false },
@@ -13,12 +24,6 @@ const blockBookingInquirySchema = new mongoose.Schema({
   baseCount: { type: Number, min: 6, max: 120, required: true },
   slubUpcharge: { type: Number, required: true },
   targetBasePrice: { type: Number, required: true },
-  upperCount: { type: Number, min: 6, max: 120, required: true },
-  lowerCount: { type: Number, min: 6, max: 120, required: true },
-  countPrices: [{
-    count: { type: Number, required: true },
-    price: { type: Number, required: true }
-  }],
   quantity: { type: Number, required: true },
   quantityType: {
     type: String,
@@ -26,27 +31,33 @@ const blockBookingInquirySchema = new mongoose.Schema({
     required: true
   },
   deliveryStartDate: { type: Date, required: true },
-  deliveryEndDate: { type: Date,required: true },
+  deliveryEndDate: { type: Date, required: true },
+  upperCount: { type: Number, min: 6, max: 120, required: true },
+  lowerCount: { type: Number, min: 6, max: 120, required: true },
+  countPrices: [{
+    count: { type: Number },
+    price: { type: Number }
+  }],
+
   paymentTerms: {
-    paymentMode: { type: String, enum: ["advance", "credit", "pdc", "advance_pdc", "lc"], required: true },
-    days: { type: Number, required: true },
-    shipmentTerms: { type: String, required: true },
+    paymentMode: { type: String, enum: ["advance", "credit", "pdc", "advance_pdc", "lc"] },
+    days: { type: Number },
+    shipmentTerms: { type: String },
     businessConditions: {
       type: String,
-      enum: ["efs", "gst", "non_gst"],
-      required: true
+      enum: ["efs", "gst", "non_gst"]
     }
   },
   materialCharges: [{
-    material: { type: String, required: true },
-    upcharge: { type: Number, required: true }
+    material: { type: String },
+    upcharge: { type: Number}
   }],
   certificateUpcharges: [{
-    certificate: { type: String, required: true },
-    upcharge: { type: Number, required: true }
+    certificate: { type: String},
+    upcharge: { type: Number }
   }],
   createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date }, // Ensure this field is updated when status changes
+  updatedAt: { type: Date },
   aging: { type: Number, default: 0 },
   status: {
     type: String,

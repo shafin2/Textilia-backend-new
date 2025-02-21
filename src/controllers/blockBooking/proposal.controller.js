@@ -11,19 +11,17 @@ exports.createProposal = async (req, res) => {
 			paymentTerms,
 		} = req.body;
 
-		// Ensure the inquiry exists
 		const inquiry = await BlockBookingInquiry.findById(inquiryId);
 		if (!inquiry) {
 			return res.status(404).json({ message: "Inquiry not found." });
 		}
-		// Check if a proposal already exists for this supplier and inquiry
+
 		const existingProposal = await BlockBookingProposal.findOne({
 			inquiryId,
 			supplierId: req.user.id,
 		});
 
 		if (existingProposal) {
-			// Update the existing proposal
 			existingProposal.countPrices =
 				countPrices || existingProposal.countPrices;
 			existingProposal.materialCharges =
@@ -40,7 +38,6 @@ exports.createProposal = async (req, res) => {
 			});
 		}
 
-		// Create a new proposal if no existing proposal found
 		const proposal = new BlockBookingProposal({
 			inquiryId,
 			supplierId: req.user.id,
@@ -52,7 +49,6 @@ exports.createProposal = async (req, res) => {
 
 		const savedProposal = await proposal.save();
 
-		// Update the status of the inquiry
 		inquiry.status = "proposal_sent";
 		await inquiry.save();
 		res.status(201).json({
@@ -69,27 +65,22 @@ exports.getCustomerProposals = async (req, res) => {
 	try {
 		const customerId = req.user.id;
 
-		// Fetch inquiries made by the customer
 		const inquiries = await BlockBookingInquiry.find({ customerId }).select(
 			"_id baseCount quantity quantityType deliveryEndDate targetBasePrice createdAt status aging"
 		);
 
-		// Map inquiries to extract their IDs
 		const inquiryIds = inquiries.map((inquiry) => inquiry._id);
 
-		// Aggregate to count proposals for each inquiry
 		const proposalCounts = await BlockBookingProposal.aggregate([
 			{ $match: { inquiryId: { $in: inquiryIds } } },
 			{ $group: { _id: "$inquiryId", count: { $sum: 1 } } },
 		]);
 
-		// Create a mapping of inquiryId to proposal count
 		const proposalCountMap = proposalCounts.reduce((map, item) => {
 			map[item._id.toString()] = item.count;
 			return map;
 		}, {});
 
-		// Fetch all proposals related to those inquiries
 		const proposals = await BlockBookingProposal.find({
 			inquiryId: { $in: inquiryIds },
 		})
@@ -97,13 +88,11 @@ exports.getCustomerProposals = async (req, res) => {
 			.populate("inquiryId", "baseCount quantity quantityType deliveryEndDate targetBasePrice createdAt status aging")
 			.populate("supplierId", "name email");
 
-		// Add proposalCount to proposals
 		const proposalsWithCounts = proposals.map((proposal) => ({
 			...proposal.toObject(),
 			proposalCount: proposalCountMap[proposal.inquiryId._id.toString()] || 0,
 		}));
 
-		// Respond with the proposals including the new field
 		res.status(200).json(proposalsWithCounts);
 	} catch (error) {
 		console.error("Error fetching customer proposals:", error.message);

@@ -11,7 +11,6 @@ const protect = (roles = []) => {
 		try {
 			const decoded = jwt.verify(token, process.env.JWT_SECRET);
 			req.user = decoded;
-
 			if (roles.length && !roles.includes(req.user.businessType)) {
 				return res.status(403).json({ message: "Access denied" });
 			}

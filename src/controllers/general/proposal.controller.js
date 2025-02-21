@@ -1,77 +1,119 @@
 const GeneralProposal = require("../../models/general/proposal.model");
 const GeneralInquiry = require("../../models/general/inquiry.model");
 
+const mongoose = require("mongoose");
+
 exports.createGeneralProposals = async (req, res) => {
-  const proposalsData = req.body.proposals; // Expect an array of proposal details
+  const proposalsData = req.body.proposals;
+
   if (!Array.isArray(proposalsData) || proposalsData.length === 0) {
     return res.status(400).json({ message: "No proposals provided" });
   }
 
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const createdProposals = [];
-    for (const proposalData of proposalsData) {
+    const invalidProposals = [];
+
+    const createProposalPromises = proposalsData.map(async (proposalData) => {
       const {
         inquiryId,
         rate,
         quantity,
+        quantityType,
         deliveryStartDate,
         deliveryEndDate,
         paymentMode,
+        paymentDays,
         shipmentTerms,
         businessCondition,
       } = proposalData;
 
-      const inquiry = await GeneralInquiry.findById(inquiryId);
+      const inquiry = await GeneralInquiry.findById(inquiryId).session(session);
       if (!inquiry) {
         throw new Error(`Inquiry not found for ID ${inquiryId}`);
       }
 
-      // Create the proposal
       const proposal = new GeneralProposal({
         inquiryId,
         supplierId: req.user.id,
-        rate: proposalData.rate,
-        quantity: proposalData.quantity,
-        quantityType: proposalData.quantityType,
-        deliveryStartDate: proposalData.deliveryStartDate,
-        deliveryEndDate: proposalData.deliveryEndDate,
-        paymentMode: proposalData.paymentMode,
-        paymentDays: proposalData.paymentDays,
-        shipmentTerms: proposalData.shipmentTerms,
-        businessCondition: proposalData.businessCondition,
+        rate,
+        quantity,
+        quantityType,
+        deliveryStartDate,
+        deliveryEndDate,
+        paymentMode,
+        paymentDays,
+        shipmentTerms,
+        businessCondition,
         status: "proposal_sent",
       });
 
-      await proposal.save();
+      await proposal.save({ session });
       createdProposals.push(proposal);
 
-      // Update the inquiry status
-      inquiry.status = "proposal_sent";
-      await inquiry.save();
+      if (inquiry.status !== "proposal_sent") {
+        inquiry.status = "proposal_sent";
+        await inquiry.save({ session });
+      }
+    });
+
+    await Promise.all(createProposalPromises);
+
+    if (invalidProposals.length > 0) {
+      throw new Error("Some proposals were invalid. None of the proposals were saved.");
     }
+
+    await session.commitTransaction();
+    session.endSession();
 
     res.status(201).json({
       message: "Proposals created successfully",
       proposals: createdProposals,
     });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Error creating proposals", error: error.message });
+    await session.abortTransaction();
+    session.endSession(); 
+    res.status(500).json({
+      message: error.message || "Error creating proposals",
+    });
   }
 };
 
 exports.getCustomerProposals = async (req, res) => {
   try {
-    const proposals = await GeneralProposal.find({ customerId: req.user._id })
-      .populate("supplierId", "name") // Populate supplier details
-      .sort({ createdAt: -1 });
+    const userId = req.user.id;  
 
-    res.json(proposals);
+    const proposals = await GeneralProposal.find()
+      .populate({
+        path: "inquiryId",
+        select: "po specifications quantity quantityType deliveryStartDate deliveryEndDate status customerId",
+        match: { "customerId": userId }, 
+        populate: { path: "customerId", select: "name" }
+      });
+
+    const proposalCountByInquiry = proposals.reduce((acc, proposal) => {
+      const inquiryId = proposal.inquiryId._id.toString();
+      if (!acc[inquiryId]) {
+        acc[inquiryId] = {
+          inquiryDetails: proposal.inquiryId,
+          proposalCount: 0
+        };
+      }
+      acc[inquiryId].proposalCount += 1;
+      return acc;
+    }, {});
+
+    const inquiriesWithProposalCount = Object.values(proposalCountByInquiry);
+
+    res.status(200).json(inquiriesWithProposalCount);
+
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Error fetching proposals", error: error.message });
+    res.status(500).json({
+      message: error.message || "Error retrieving customer proposals",
+    });
   }
 };
 
@@ -96,7 +138,6 @@ exports.getSupplierProposals = async (req, res) => {
   }
 };
 
-
 exports.acceptGeneralProposal = async (req, res) => {
   const { proposalId } = req.params;
 
@@ -106,10 +147,7 @@ exports.acceptGeneralProposal = async (req, res) => {
       return res.status(404).json({ message: "Proposal not found" });
     }
     const inquiry = await GeneralInquiry.findById(proposal.inquiryId);
-    // console.log(inquiry.customerId.toString(), req.user.id.toString())
-    // if (inquiry.customerId.toString() !== req.user.id.toString()) {
-    //     return res.status(403).json({ message: "Unauthorized action" });
-    // }
+
     inquiry.status = "proposal_accepted";
     await inquiry.save();
     proposal.status = "proposal_accepted";
@@ -129,28 +167,55 @@ exports.acceptGeneralProposal = async (req, res) => {
 exports.getInquiryProposals = async (req, res) => {
   try {
     const { inquiryId } = req.params;
+    const userId = req.user.id;
 
-    // Fetch the inquiry
-    const inquiry = await GeneralInquiry.findById(inquiryId).select(
-      "-customerId -__v"
-    );
+    const inquiry = await GeneralInquiry.findById(inquiryId).select("-customerId -__v");
     if (!inquiry) {
       return res.status(404).json({ message: "Inquiry not found." });
     }
 
-    // Fetch all proposals for the given inquiry
-    const proposals = await GeneralProposal.find({ inquiryId }).populate(
-      "supplierId",
-      "name email -_id"
-    );
-
-    if (!proposals || proposals.length === 0) {
-      return res
-        .status(404)
-        .json({ message: "No proposals found for this inquiry." });
+    const user = await mongoose.model("User").findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
     }
 
-    // Combine inquiry and all proposals
+    let proposals;
+    if (user.businessType === "supplier") {
+      proposals = await GeneralProposal.find({ inquiryId })
+        .populate("supplierId", "name email -_id")
+        .lean();
+
+      const supplierProposals = proposals.filter(
+        (proposal) => proposal.supplierId._id.toString() === userId
+      );
+
+      if (supplierProposals.length === 0) {
+        return res.status(404).json({ message: "No proposals found for your inquiry." });
+      }
+
+      const otherSuppliersProposals = await GeneralProposal.countDocuments({
+        inquiryId,
+        supplierId: { $ne: userId },
+      });
+
+      if (otherSuppliersProposals > 0) {
+        return res.status(403).json({
+          message: "There are proposals from other suppliers for this inquiry.",
+        });
+      }
+
+      proposals = supplierProposals;
+    } else {
+      proposals = await GeneralProposal.find({ inquiryId }).populate(
+        "supplierId",
+        "name email -_id"
+      );
+    }
+
+    if (!proposals || proposals.length === 0) {
+      return res.status(404).json({ message: "No proposals found for this inquiry." });
+    }
+
     const response = {
       inquiryDetails: inquiry,
       proposals: proposals,
@@ -162,3 +227,4 @@ exports.getInquiryProposals = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+

@@ -19,11 +19,11 @@ router.use("/contracts", contractRoutes);
 
 // general routes
 router.use("/general/inquiry", generalInquiryRoutes);
-router.use("/general-proposals", generalProposalRoutes);
+router.use("/general/proposals", generalProposalRoutes);
 
 // block booking routes
-router.use("/block-booking-inquiries", blockBookingInquiryRoutes);
-router.use("/block-booking-proposals", blockBookingProposalRoutes);
+router.use("/block-booking/inquiry", blockBookingInquiryRoutes);
+router.use("/block-booking/proposals", blockBookingProposalRoutes);
 
 
 module.exports = router;
