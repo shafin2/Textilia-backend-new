@@ -82,87 +82,100 @@ exports.createGeneralProposals = async (req, res) => {
   }
 };
 
-exports.getCustomerProposals = async (req, res) => {
+exports.getProposals = async (req, res) => {
   try {
     const userId = req.user.id;  
+    const { businessType } = req.user;
+    let proposals = [];
 
-    const proposals = await GeneralProposal.find()
-      .populate({
-        path: "inquiryId",
-        select: "po specifications quantity quantityType deliveryStartDate deliveryEndDate status customerId",
-        match: { "customerId": userId }, 
-        populate: { path: "customerId", select: "name" }
-      });
+    if (businessType === "customer") {
+      proposals = await GeneralProposal.find()
+        .populate({
+          path: "inquiryId",
+          select: "po specifications quantity quantityType status customerId",
+          match: { customerId: userId }
+        });
 
-    const proposalCountByInquiry = proposals.reduce((acc, proposal) => {
-      const inquiryId = proposal.inquiryId._id.toString();
-      if (!acc[inquiryId]) {
-        acc[inquiryId] = {
-          inquiryDetails: proposal.inquiryId,
-          proposalCount: 0
-        };
-      }
-      acc[inquiryId].proposalCount += 1;
-      return acc;
-    }, {});
+      const proposalCountByInquiry = proposals.reduce((acc, proposal) => {
+        const inquiryId = proposal.inquiryId._id.toString();
+        if (!acc[inquiryId]) {
+          acc[inquiryId] = {
+            inquiryDetails: proposal.inquiryId,
+            proposalCount: 0
+          };
+        }
+        acc[inquiryId].proposalCount += 1;
+        return acc;
+      }, {});
 
-    const inquiriesWithProposalCount = Object.values(proposalCountByInquiry);
+      proposals = Object.values(proposalCountByInquiry);
+    } else if (businessType === "supplier") {
+      proposals = await GeneralProposal.find({ supplierId: userId })
+        .populate({
+          path: "inquiryId",
+          select: "details customerId",
+          populate: { path: "customerId", select: "name" }
+        })
+        .sort({ createdAt: -1 });
 
-    res.status(200).json(inquiriesWithProposalCount);
-
-  } catch (error) {
-    res.status(500).json({
-      message: error.message || "Error retrieving customer proposals",
-    });
-  }
-};
-
-exports.getSupplierProposals = async (req, res) => {
-  try {
-    const proposals = await GeneralProposal.find({ supplierId: req.user.id })
-      .populate({
-        path: "inquiryId",
-        select: "details customerId",
-        populate: { path: "customerId", select: "name" }
-      })
-      .sort({ createdAt: -1 });
-
-    res.json({
-      proposals: proposals.map(proposal => ({
+      proposals = proposals.map(proposal => ({
         ...proposal.toObject(),
         customerName: proposal.inquiryId?.customerId?.name || "Unknown"
-      }))
-    });
+      }));
+    }
+
+    res.status(200).json({ proposals });
   } catch (error) {
-    res.status(500).json({ message: "Error fetching proposals", error: error.message });
+    res.status(500).json({
+      message: error.message || "Error retrieving proposals",
+    });
   }
 };
+
 
 exports.acceptGeneralProposal = async (req, res) => {
   const { proposalId } = req.params;
+  const { po } = req.body;  
 
   try {
     const proposal = await GeneralProposal.findById(proposalId);
     if (!proposal) {
       return res.status(404).json({ message: "Proposal not found" });
     }
-    const inquiry = await GeneralInquiry.findById(proposal.inquiryId);
+
+    const inquiry = await GeneralInquiry.findById(proposal.inquiryId).where({ $ne: { status: "inquiry_closed" } });
+    if (!inquiry) {
+      return res.status(404).json({ message: "Inquiry not found" });
+    }
+
+    if (inquiry.po) {
+      proposal.po = inquiry.po;  
+      console.log("PO number added to the proposal", inquiry.po);
+    }
+    else if (po) {
+      proposal.po = po;
+      console.log("PO number added to the proposal", po);
+    }
+    else {
+      return res.status(400).json({ message: "PO number is required" });
+    }
 
     inquiry.status = "proposal_accepted";
     await inquiry.save();
+
     proposal.status = "proposal_accepted";
+    if (!proposal.po && inquiry.po) {
+      proposal.po = inquiry.po; 
+    }
     await proposal.save();
 
-    res
-      .status(201)
-      .json({ message: "Proposal accepted successfully", proposal });
+    res.status(201).json({ message: "Proposal accepted successfully", proposal });
   } catch (error) {
     console.error("Error accepting proposal:", error.message);
-    res
-      .status(500)
-      .json({ message: "Error accepting proposal", error: error.message });
+    res.status(500).json({ message: "Error accepting proposal", error: error.message });
   }
 };
+
 
 exports.getInquiryProposals = async (req, res) => {
   try {

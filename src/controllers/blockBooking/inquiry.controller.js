@@ -39,11 +39,47 @@ exports.createInquiry = async (req, res) => {
 
 exports.getInquiries = async (req, res) => {
   try {
-    const inquiries = await BlockBookingInquiry.find()
-      .select("aging baseCount quantity quantityType deliveryStartDate deliveryEndDate status customerId")
-      .populate("customerId", "name email")
-      .lean()
-      .sort({ createdAt: -1 });
+    const userId = req.user.id; 
+    const { businessType } = req.user;
+    let inquiries = [];
+
+    if (businessType === "customer") {
+      // Get inquiries for customer with proposal counts
+      inquiries = await BlockBookingInquiry.find({ customerId: userId })
+        .select("baseCount quantity quantityType deliveryEndDate status aging")
+        .lean()
+        .sort({ createdAt: -1 });
+
+      const inquiryIds = inquiries.map((inquiry) => inquiry._id);
+
+      const proposalCounts = await BlockBookingProposal.aggregate([
+        { $match: { inquiryId: { $in: inquiryIds } } },
+        {
+          $group: {
+            _id: "$inquiryId",
+            proposalCount: { $sum: 1 },
+          },
+        },
+      ]);
+
+      const proposalCountMap = proposalCounts.reduce((acc, cur) => {
+        acc[cur._id.toString()] = cur.proposalCount;
+        return acc;
+      }, {});
+
+      inquiries = inquiries.map((inquiry) => ({
+        ...inquiry,
+        proposalCount: proposalCountMap[inquiry._id.toString()] || 0,
+      }));
+
+    } else if (businessType === "supplier") {
+      // Get inquiries for supplier
+      inquiries = await BlockBookingInquiry.find()
+        .select("aging baseCount quantity quantityType deliveryStartDate deliveryEndDate status customerId")
+        .populate("customerId", "name email")
+        .lean()
+        .sort({ createdAt: -1 });
+    }
 
     res.status(200).json(inquiries);
   } catch (error) {
@@ -51,44 +87,6 @@ exports.getInquiries = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
-
-exports.getCustomerInquiries = async (req, res) => {
-  console.log(req.user)
-  try {
-    const customerId = req.user.id; 
-    const inquiries = await BlockBookingInquiry.find({ customerId: customerId })
-      .select("baseCount quantity quantityType deliveryEndDate status aging")
-      .lean()
-      .sort({ createdAt: -1 }); 
-    const inquiryIds = inquiries.map((inquiry) => inquiry._id);
-
-    const proposalCounts = await BlockBookingProposal.aggregate([
-      { $match: { inquiryId: { $in: inquiryIds } } }, 
-      {
-        $group: {
-          _id: "$inquiryId",
-          proposalCount: { $sum: 1 }, 
-        },
-      },
-    ]);
-
-    const proposalCountMap = proposalCounts.reduce((acc, cur) => {
-      acc[cur._id.toString()] = cur.proposalCount;
-      return acc;
-    }, {});
-
-    const inquiriesWithProposalCount = inquiries.map((inquiry) => ({
-      ...inquiry,
-      proposalCount: proposalCountMap[inquiry._id.toString()] || 0, 
-    }));
-
-    res.status(200).json(inquiriesWithProposalCount);
-  } catch (error) {
-    console.error("Error fetching customer inquiries:", error.message);
-    res.status(500).json({ error: error.message });
-  }
-};
-
 
 exports.getInquiry = async (req, res) => {
   try {

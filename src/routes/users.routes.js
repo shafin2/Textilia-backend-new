@@ -10,7 +10,7 @@ const {
 
 router.get(
 	"/suppliers",
-	// protect(),
+	protect(["customer"]),
 	getSuppliers
 );
 

@@ -5,8 +5,7 @@ const { protect } = require("../../middleware/auth.middleware");
 
 router.post("/create", protect(["supplier"]), blockBookingProposalController.createProposal);
 
-router.get("/customer", protect(["customer"]), blockBookingProposalController.getCustomerProposals);
-router.get("/supplier", protect(["supplier"]), blockBookingProposalController.getSupplierProposals);
+router.get("/", protect(["customer","supplier"]), blockBookingProposalController.getProposals);
 
 router.get("/proposal/:inquiryId", blockBookingProposalController.getProposalDetails);
 

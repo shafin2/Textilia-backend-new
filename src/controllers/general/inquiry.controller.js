@@ -1,4 +1,5 @@
 const GeneralInquiry = require("../../models/general/inquiry.model");
+const GeneralProposal = require("../../models/general/proposal.model");
 const User = require("../../models/user.model");
 
 const sanitize = require("mongo-sanitize");
@@ -130,41 +131,43 @@ exports.test = async (req, res) => {
 	res.status(200).json({ message: "Test route" });
 }
 
-exports.getCustomerInquiries = async (req, res) => {
+exports.getInquiries = async (req, res) => {
 	try {
-		const userId = req.user.id;
-
-		const inquiries = await GeneralInquiry.find({
-			customerId: userId,
-			status: { $ne: "inquiry_closed" }
-		})
-			.sort({ createdAt: -1 })
-			.select("po specifications quantity quantityType createdAt status");
-
-		res.status(200).json(inquiries);
+	  const userId = req.user.id;
+	  const { businessType } = req.user; 
+  
+	  let query = businessType === "customer" ? { customerId: userId } : { nomination: userId };
+	  let selectFields = "po specifications quantity quantityType createdAt status";
+	  let populateFields = businessType === "supplier" ? { path: "customerId", select: "name" } : "";
+  
+	  if (businessType === "supplier") {
+		selectFields += " deliveryStartDate deliveryEndDate paymentTerms";
+	  }
+  
+	  // Fetch the inquiries based on the query
+	  const inquiries = await GeneralInquiry.find(query)
+		.sort({ createdAt: -1 })
+		.select(selectFields)
+		.populate(populateFields);
+  
+	  // Modify the status for suppliers: if a supplier has not sent a proposal, the status should be "inquiry_sent"
+	  if (businessType === "supplier") {
+		for (let inquiry of inquiries) {
+		  // Check if a proposal exists for the inquiry, if not set status as "inquiry_sent"
+		  const proposal = await GeneralProposal.findOne({ inquiryId: inquiry._id, supplierId: userId });
+		  if (!proposal) {
+			inquiry.status = "inquiry_sent"; // Update the status for the supplier
+		  }
+		}
+	  }
+  
+	  res.status(200).json(inquiries);
 	} catch (error) {
-		res.status(500).json({
-			message: error.message || "Error retrieving customer inquiries",
-		});
+	  res.status(500).json({
+		message: error.message || "Error retrieving inquiries",
+	  });
 	}
-};
+  };
+  
+  
 
-exports.getSupplierInquiries = async (req, res) => {
-	try {
-		const userId = req.user.id;
-
-		const inquiries = await GeneralInquiry.find({
-			nomination: userId,
-			status: { $ne: "inquiry_closed" }
-		})
-			.sort({ createdAt: -1 })
-			.populate("customerId", "name")
-			.select("po specifications quantity quantityType createdAt status deliveryStartDate deliveryEndDate paymentTerms");
-
-		res.status(200).json(inquiries);
-	} catch (error) {
-		res.status(500).json({
-			message: error.message || "Error retrieving supplier inquiries",
-		});
-	}
-};

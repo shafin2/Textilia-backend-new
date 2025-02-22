@@ -61,66 +61,60 @@ exports.createProposal = async (req, res) => {
 	}
 };
 
-exports.getCustomerProposals = async (req, res) => {
+exports.getProposals = async (req, res) => {
 	try {
-		const customerId = req.user.id;
-
-		const inquiries = await BlockBookingInquiry.find({ customerId }).select(
-			"_id baseCount quantity quantityType deliveryEndDate targetBasePrice createdAt status aging"
-		);
-
+	  const userId = req.user.id; 
+	  const { businessType } = req.user;
+	  let proposals = [];
+  
+	  if (businessType === "customer") {
+		const inquiries = await BlockBookingInquiry.find({ customerId: userId })
+		  .select("_id baseCount quantity quantityType deliveryEndDate targetBasePrice createdAt status aging");
+  
 		const inquiryIds = inquiries.map((inquiry) => inquiry._id);
-
+  
 		const proposalCounts = await BlockBookingProposal.aggregate([
-			{ $match: { inquiryId: { $in: inquiryIds } } },
-			{ $group: { _id: "$inquiryId", count: { $sum: 1 } } },
+		  { $match: { inquiryId: { $in: inquiryIds } } },
+		  { $group: { _id: "$inquiryId", count: { $sum: 1 } } },
 		]);
-
+  
 		const proposalCountMap = proposalCounts.reduce((map, item) => {
-			map[item._id.toString()] = item.count;
-			return map;
+		  map[item._id.toString()] = item.count;
+		  return map;
 		}, {});
-
-		const proposals = await BlockBookingProposal.find({
-			inquiryId: { $in: inquiryIds },
+  
+		proposals = await BlockBookingProposal.find({
+		  inquiryId: { $in: inquiryIds },
 		})
-			.select("inquiryId supplierId createdAt status aging")
-			.populate("inquiryId", "baseCount quantity quantityType deliveryEndDate targetBasePrice createdAt status aging")
-			.populate("supplierId", "name email");
-
-		const proposalsWithCounts = proposals.map((proposal) => ({
-			...proposal.toObject(),
-			proposalCount: proposalCountMap[proposal.inquiryId._id.toString()] || 0,
+		  .select("inquiryId supplierId createdAt status aging")
+		  .populate("inquiryId", "baseCount quantity quantityType deliveryEndDate targetBasePrice createdAt status aging")
+		  .populate("supplierId", "name email");
+  
+		proposals = proposals.map((proposal) => ({
+		  ...proposal.toObject(),
+		  proposalCount: proposalCountMap[proposal.inquiryId._id.toString()] || 0,
 		}));
-
-		res.status(200).json(proposalsWithCounts);
+  
+	  } else if (businessType === "supplier") {
+		// Get supplier proposals
+		proposals = await BlockBookingProposal.find({ supplierId: userId })
+		  .select("inquiryId createdAt status aging")
+		  .populate({
+			path: "inquiryId",
+			populate: {
+			  path: "customerId",
+			  select: "name profile.companyDetails",
+			},
+		  });
+	  }
+  
+	  res.status(200).json(proposals);
 	} catch (error) {
-		console.error("Error fetching customer proposals:", error.message);
-		res.status(500).json({ error: error.message });
+	  console.error("Error fetching proposals:", error.message);
+	  res.status(500).json({ error: error.message });
 	}
-};
-
-
-exports.getSupplierProposals = async (req, res) => {
-	try {
-		const supplierId = req.user.id;
-
-		// Fetch proposals created by the supplier
-		const proposals = await BlockBookingProposal.find({ supplierId })
-			.select("inquiryId createdAt status aging")
-			.populate({
-				path: "inquiryId",
-				populate: {
-					path: "customerId",
-					select: "name profile.companyDetails",
-				},
-			});
-		res.status(200).json(proposals);
-	} catch (error) {
-		console.error("Error fetching supplier proposals:", error.message);
-		res.status(500).json({ error: error.message });
-	}
-};
+  };
+  
 
 exports.getProposalDetails = async (req, res) => {
 	try {

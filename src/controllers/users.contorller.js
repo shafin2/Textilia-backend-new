@@ -1,10 +1,9 @@
 const User = require("../models/user.model");
 
-// Get Suppliers
 const getSuppliers = async (req, res) => {
 	try {
 		const suppliers = await User.find({ businessType: "supplier" }).select(
-			"name _id"
+			"name _id email"
 		);
 
 		if (!suppliers || suppliers.length === 0) {

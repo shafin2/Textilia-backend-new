@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 
 const blockBookingProposalSchema = new mongoose.Schema({
+	po: { type: Number },
 	inquiryId: {
 		type: mongoose.Schema.Types.ObjectId,
 		ref: "BlockBookingInquiry",
