@@ -7,11 +7,11 @@ router.post("/create", protect(["supplier"]), blockBookingProposalController.cre
 
 router.get("/", protect(["customer","supplier"]), blockBookingProposalController.getProposals);
 
-router.get("/proposal/:inquiryId", blockBookingProposalController.getProposalDetails);
+router.get("/:inquiryId", blockBookingProposalController.getProposalDetails);
 
 router.get("/inquiryProposals/:inquiryId", blockBookingProposalController.getInquiryProposals);
 
-router.post("/proposal/:proposalId/accept", protect(["customer"]), blockBookingProposalController.acceptProposal);
+router.post("/:proposalId/accept", protect(["customer"]), blockBookingProposalController.acceptProposal);
 
 
 

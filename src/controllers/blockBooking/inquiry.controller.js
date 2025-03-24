@@ -26,6 +26,25 @@ exports.createInquiry = async (req, res) => {
       return res.status(400).json({ message: `Missing prices for counts: ${missingCounts.join(", ")}` });
     }
 
+    // Remove empty payment terms, this should be done in the frontend
+    if (inquiryData.paymentTerms) {
+      if (!inquiryData.paymentTerms.paymentMode || inquiryData.paymentTerms.paymentMode === '') {
+        delete inquiryData.paymentTerms.paymentMode;
+      }
+      if (!inquiryData.paymentTerms.days || inquiryData.paymentTerms.days === '') {
+        delete inquiryData.paymentTerms.days;
+      }
+      if (!inquiryData.paymentTerms.shipmentTerms || inquiryData.paymentTerms.shipmentTerms === '') {
+        delete inquiryData.paymentTerms.shipmentTerms;
+      }
+      if (!inquiryData.paymentTerms.businessConditions || inquiryData.paymentTerms.businessConditions === '') {
+        delete inquiryData.paymentTerms.businessConditions;
+      }
+      // If paymentTerms is now an empty object, remove it entirely
+      if (Object.keys(inquiryData.paymentTerms).length === 0) {
+        delete inquiryData.paymentTerms;
+      }
+    }
     inquiryData.customerId = req.user.id;
 
     const inquiry = new BlockBookingInquiry(inquiryData);
@@ -57,19 +76,19 @@ exports.getInquiries = async (req, res) => {
         {
           $group: {
             _id: "$inquiryId",
-            proposalCount: { $sum: 1 },
+            proposalsReceived: { $sum: 1 },
           },
         },
       ]);
 
       const proposalCountMap = proposalCounts.reduce((acc, cur) => {
-        acc[cur._id.toString()] = cur.proposalCount;
+        acc[cur._id.toString()] = cur.proposalsReceived;
         return acc;
       }, {});
 
       inquiries = inquiries.map((inquiry) => ({
         ...inquiry,
-        proposalCount: proposalCountMap[inquiry._id.toString()] || 0,
+        proposalsReceived: proposalCountMap[inquiry._id.toString()] || 0,
       }));
 
     } else if (businessType === "supplier") {
@@ -92,6 +111,7 @@ exports.getInquiry = async (req, res) => {
   try {
     const inquiryId = sanitize(req.params.inquiryId); 
     const inquiry = await BlockBookingInquiry.findById(inquiryId)
+      .populate("customerId", "name email")
       .lean(); 
 
     if (!inquiry) {
@@ -126,7 +146,7 @@ exports.declineInquiry = async (req, res) => {
     );
 
     // Respond with the updated inquiry data
-    res.status(200).json(inquiry);
+    res.status(201).json(inquiry);
   } catch (error) {
     console.error("Error declining inquiry:", error.message);
     res.status(500).json({ error: error.message });

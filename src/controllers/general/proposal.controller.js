@@ -143,18 +143,17 @@ exports.acceptGeneralProposal = async (req, res) => {
       return res.status(404).json({ message: "Proposal not found" });
     }
 
-    const inquiry = await GeneralInquiry.findById(proposal.inquiryId).where({ $ne: { status: "inquiry_closed" } });
+    const inquiry = await GeneralInquiry.findOne({
+      _id: proposal.inquiryId,
+      status: { $ne: "inquiry_closed" }
+    });
+
     if (!inquiry) {
       return res.status(404).json({ message: "Inquiry not found" });
     }
 
-    if (inquiry.po) {
-      proposal.po = inquiry.po;  
-      console.log("PO number added to the proposal", inquiry.po);
-    }
-    else if (po) {
-      proposal.po = po;
-      console.log("PO number added to the proposal", po);
+    if (po) {
+      inquiry.po = po;
     }
     else {
       return res.status(400).json({ message: "PO number is required" });
@@ -182,30 +181,36 @@ exports.getInquiryProposals = async (req, res) => {
     const { inquiryId } = req.params;
     const userId = req.user.id;
 
-    const inquiry = await GeneralInquiry.findById(inquiryId).select("-customerId -__v");
+    const inquiry = await GeneralInquiry.findById(inquiryId)
+      .select("-customerId -__v")
+      .lean();
+
     if (!inquiry) {
       return res.status(404).json({ message: "Inquiry not found." });
     }
 
-    const user = await mongoose.model("User").findById(userId);
+    const user = await mongoose.model("User")
+      .findById(userId)
+      .select("businessType")
+      .lean();
+
     if (!user) {
       return res.status(404).json({ message: "User not found." });
     }
 
     let proposals;
     if (user.businessType === "supplier") {
-      proposals = await GeneralProposal.find({ inquiryId })
-        .populate("supplierId", "name email -_id")
-        .lean();
+      // First check if supplier has any proposals for this inquiry
+      const supplierProposalCount = await GeneralProposal.countDocuments({
+        inquiryId,
+        supplierId: userId
+      });
 
-      const supplierProposals = proposals.filter(
-        (proposal) => proposal.supplierId._id.toString() === userId
-      );
-
-      if (supplierProposals.length === 0) {
+      if (supplierProposalCount === 0) {
         return res.status(404).json({ message: "No proposals found for your inquiry." });
       }
 
+      // Check for other suppliers' proposals
       const otherSuppliersProposals = await GeneralProposal.countDocuments({
         inquiryId,
         supplierId: { $ne: userId },
@@ -217,12 +222,19 @@ exports.getInquiryProposals = async (req, res) => {
         });
       }
 
-      proposals = supplierProposals;
+      // Get supplier's proposals
+      proposals = await GeneralProposal.find({ 
+        inquiryId,
+        supplierId: userId 
+      })
+      .populate("supplierId", "name email")
+      .lean();
+
     } else {
-      proposals = await GeneralProposal.find({ inquiryId }).populate(
-        "supplierId",
-        "name email -_id"
-      );
+      // For customers, get all proposals
+      proposals = await GeneralProposal.find({ inquiryId })
+        .populate("supplierId", "name email")
+        .lean();
     }
 
     if (!proposals || proposals.length === 0) {
@@ -237,7 +249,10 @@ exports.getInquiryProposals = async (req, res) => {
     res.status(200).json(response);
   } catch (error) {
     console.error("Error fetching inquiry proposals:", error.message);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      message: "Error fetching inquiry proposals",
+      error: error.message 
+    });
   }
 };
 

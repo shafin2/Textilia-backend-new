@@ -63,58 +63,58 @@ exports.createProposal = async (req, res) => {
 
 exports.getProposals = async (req, res) => {
 	try {
-	  const userId = req.user.id; 
-	  const { businessType } = req.user;
-	  let proposals = [];
-  
-	  if (businessType === "customer") {
-		const inquiries = await BlockBookingInquiry.find({ customerId: userId })
-		  .select("_id baseCount quantity quantityType deliveryEndDate targetBasePrice createdAt status aging");
-  
-		const inquiryIds = inquiries.map((inquiry) => inquiry._id);
-  
-		const proposalCounts = await BlockBookingProposal.aggregate([
-		  { $match: { inquiryId: { $in: inquiryIds } } },
-		  { $group: { _id: "$inquiryId", count: { $sum: 1 } } },
-		]);
-  
-		const proposalCountMap = proposalCounts.reduce((map, item) => {
-		  map[item._id.toString()] = item.count;
-		  return map;
-		}, {});
-  
-		proposals = await BlockBookingProposal.find({
-		  inquiryId: { $in: inquiryIds },
-		})
-		  .select("inquiryId supplierId createdAt status aging")
-		  .populate("inquiryId", "baseCount quantity quantityType deliveryEndDate targetBasePrice createdAt status aging")
-		  .populate("supplierId", "name email");
-  
-		proposals = proposals.map((proposal) => ({
-		  ...proposal.toObject(),
-		  proposalCount: proposalCountMap[proposal.inquiryId._id.toString()] || 0,
-		}));
-  
-	  } else if (businessType === "supplier") {
-		// Get supplier proposals
-		proposals = await BlockBookingProposal.find({ supplierId: userId })
-		  .select("inquiryId createdAt status aging")
-		  .populate({
-			path: "inquiryId",
-			populate: {
-			  path: "customerId",
-			  select: "name profile.companyDetails",
-			},
-		  });
-	  }
-  
-	  res.status(200).json(proposals);
+		const userId = req.user.id;
+		const { businessType } = req.user;
+		let proposals = [];
+
+		if (businessType === "customer") {
+			const inquiries = await BlockBookingInquiry.find({ customerId: userId })
+				.select("_id baseCount quantity quantityType deliveryEndDate targetBasePrice createdAt status aging");
+
+			const inquiryIds = inquiries.map((inquiry) => inquiry._id);
+
+			const proposalCounts = await BlockBookingProposal.aggregate([
+				{ $match: { inquiryId: { $in: inquiryIds } } },
+				{ $group: { _id: "$inquiryId", count: { $sum: 1 } } },
+			]);
+
+			const proposalCountMap = proposalCounts.reduce((map, item) => {
+				map[item._id.toString()] = item.count;
+				return map;
+			}, {});
+
+			proposals = await BlockBookingProposal.find({
+				inquiryId: { $in: inquiryIds },
+			})
+				.select("inquiryId supplierId createdAt status aging")
+				.populate("inquiryId", "baseCount quantity quantityType deliveryEndDate targetBasePrice createdAt status aging")
+				.populate("supplierId", "name email");
+
+			proposals = proposals.map((proposal) => ({
+				...proposal.toObject(),
+				proposalCount: proposalCountMap[proposal.inquiryId._id.toString()] || 0,
+			}));
+
+		} else if (businessType === "supplier") {
+			// Get supplier proposals
+			proposals = await BlockBookingProposal.find({ supplierId: userId })
+				.select("inquiryId createdAt status aging")
+				.populate({
+					path: "inquiryId",
+					populate: {
+						path: "customerId",
+						select: "name profile.companyDetails",
+					},
+				});
+		}
+
+		res.status(200).json(proposals);
 	} catch (error) {
-	  console.error("Error fetching proposals:", error.message);
-	  res.status(500).json({ error: error.message });
+		console.error("Error fetching proposals:", error.message);
+		res.status(500).json({ error: error.message });
 	}
-  };
-  
+};
+
 
 exports.getProposalDetails = async (req, res) => {
 	try {
@@ -192,6 +192,17 @@ exports.acceptProposal = async (req, res) => {
 			return res.status(404).json({ message: "Proposal not found." });
 		}
 
+		const inquiry = await BlockBookingInquiry.findOne({
+			_id: proposal.inquiryId,
+			status: { $ne: "inquiry_closed" }
+		});
+
+		if (!inquiry) {
+			return res.status(404).json({ message: "Inquiry not found." });
+		}
+
+		inquiry.status = "proposal_accepted";
+    	await inquiry.save();
 		// Update the status of the proposal
 		proposal.status = "proposal_accepted";
 		const updatedProposal = await proposal.save();

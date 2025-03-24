@@ -137,7 +137,7 @@ exports.getInquiries = async (req, res) => {
 	  const { businessType } = req.user; 
   
 	  let query = businessType === "customer" ? { customerId: userId } : { nomination: userId };
-	  let selectFields = "po specifications quantity quantityType createdAt status";
+	  let selectFields = "po rate specifications quantity quantityType createdAt status";
 	  let populateFields = businessType === "supplier" ? { path: "customerId", select: "name" } : "";
   
 	  if (businessType === "supplier") {
@@ -159,7 +159,18 @@ exports.getInquiries = async (req, res) => {
 			inquiry.status = "inquiry_sent"; // Update the status for the supplier
 		  }
 		}
-	  }
+	  } else if (businessType === "customer") {
+        // Add proposal count for customers
+        const inquiriesWithProposalCount = await Promise.all(
+          inquiries.map(async (inquiry) => {
+            const proposalCount = await GeneralProposal.countDocuments({ inquiryId: inquiry._id });
+            const inquiryObj = inquiry.toObject();
+            inquiryObj.proposalsReceived = proposalCount;
+            return inquiryObj;
+          })
+        );
+        return res.status(200).json(inquiriesWithProposalCount);
+      }
   
 	  res.status(200).json(inquiries);
 	} catch (error) {
