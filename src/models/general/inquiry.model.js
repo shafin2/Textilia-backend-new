@@ -70,6 +70,10 @@ const generalInquirySchema = new mongoose.Schema(
       ],
       default: "inquiry_sent",
     },
+    closeReason: {
+      type: String,
+      trim: true
+    },
   },
   { timestamps: true }
 );

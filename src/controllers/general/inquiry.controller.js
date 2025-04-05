@@ -71,10 +71,19 @@ exports.createGeneralInquiries = async (req, res) => {
 exports.closeInquiry = async (req, res) => {
 	try {
 		const inquiryId = sanitize(req.params.inquiryId);
-		console.log("Inquiry ID: ", inquiryId);
+		const { message } = req.body;
+		
+		const updateData = { 
+			status: "inquiry_closed"
+		};
+		
+		if (message) {
+			updateData.closeReason = message;
+		}
+		
 		const updatedInquiry = await GeneralInquiry.findByIdAndUpdate(
 			inquiryId,
-			{ status: "inquiry_closed" },
+			updateData,
 			{ new: true }
 		);
 
