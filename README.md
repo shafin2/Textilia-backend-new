@@ -83,3 +83,10 @@ Textilia-backend
 └─ vercel.json
 
 ```
+
+
+---
+
+## Author
+
+Built by **[Shafin Zaman](https://www.shafinzaman.dev)** (Shafin Uz Zaman), Senior AI Engineer. More of my work: [shafinzaman.dev/work](https://www.shafinzaman.dev/work).
